@@ -55,6 +55,14 @@ void PlanDialog::on_btnComp_clicked()
     ui->labelDetailPrompt->setVisible(false);
 }
 
+void PlanDialog::on_btnRemote_clicked()
+{
+    m_selectedPlanType ="リモート";
+    ui->lineEditDetail->clear();
+    ui->lineEditDetail->setVisible(false);
+    ui->labelDetailPrompt->setVisible(false);
+}
+
 void PlanDialog::on_btnTrip_clicked()
 {
     m_selectedPlanType ="出張";

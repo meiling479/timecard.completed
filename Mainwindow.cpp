@@ -22,7 +22,9 @@ MainWindow::MainWindow(QWidget *parent)
     currentMonth = QDate::currentDate().month();
 
     initMonthTable(currentYear, currentMonth);
+    loadCsvToTable(currentName);
     loadTodayPlans();
+    updateNameButtons();
 
     connect (ui->btnExportReport,
             &QPushButton::clicked,
@@ -45,8 +47,7 @@ MainWindow::MainWindow(QWidget *parent)
             ui->labelName->setText(QString("表示中: %1").arg(name));
 
             //テーブル表示、csv読み込み
-            initMonthTable(currentYear, currentMonth);
-            loadCsvToTable(name);
+            refreshView();
 
             //予定有→出退処理しない
             if (hasTodayPlan(name))
@@ -80,8 +81,8 @@ MainWindow::MainWindow(QWidget *parent)
                 b->setStyleSheet("");
 
             //反映
-            initMonthTable(currentYear, currentMonth);
-            loadCsvToTable(name);
+            currentName = name;
+            refreshView();
             loadTodayPlans();
             updateNameButtons();
             return;
@@ -175,7 +176,7 @@ bool MainWindow::isHoliday(const QDate &date) const//祝日判定
     holidays << QDate(year, 5, 5);//こどもの日
     holidays << QDate(year, 8, 11);//山の日
     holidays << QDate(year, 11, 3);//文化の日
-    holidays << QDate(year, 11, 23);//敬老感謝の日
+    holidays << QDate(year, 11, 23);//勤労感謝の日
 
     //ハッピーマンデー
     holidays << nthMonday(year, 1, 2);//成人の日
@@ -278,11 +279,10 @@ void MainWindow::writeRecord(const QString &type)
 //-csv月報方式-
 void MainWindow::exportMonthlyReport()
 {
-    QSet<QString> names;
     QSet<QDate> allDates;
     QMap<QDate, QMap<QString, QString>> startTimes;
     QMap<QDate, QMap<QString, QString>> endTimes;
-    QMap<QDate,QMap<QString, QString>> plans;
+    QMap<QDate,QMap<QString, QStringList>> plans;
 
     QString inputPath = timecardPath();
     QString outputPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
@@ -305,13 +305,30 @@ void MainWindow::exportMonthlyReport()
             if (cols.size() < 3) continue;
 
             QDate d = QDate::fromString(cols[0].trimmed(), "yyyy/MM/dd");
+            if (!d.isValid()) continue;
+
+            //表示中の年月のみ表示
+            if (d.year() != currentYear || d.month() != currentMonth)
+            {
+                continue;
+            }
             QString person = cols[1].trimmed();
             QString plan = cols[2].trimmed();
-            plans[d][person] = plan;
+            //その他ボタン以外表示
+            bool reportTarget = plan == "有休" || plan == "代休" || plan == "リモート" || plan.startsWith("出張");
+            if (!reportTarget)
+            {
+                continue;
+            }
+            plans[d][person].append(plan);
         }
-        planFile.close();
-    }
-
+            QDate firstDay(currentYear, currentMonth, 1);
+            for (QDate d = firstDay; d.month() == currentMonth; d = d.addDays(1))
+            {
+                //過去の追加予定も表示
+                allDates.insert(d);
+                planFile.close();
+            }
     while (!in.atEnd())
     {
         QString line = in.readLine();
@@ -326,7 +343,11 @@ void MainWindow::exportMonthlyReport()
         QString type = cols[3].trimmed();
         if (!date.isValid()) continue;
 
-        names.insert(name);
+        //表示中の年月のみ表示
+        if (date.year() != currentYear || date.month() != currentMonth)
+        {
+            continue;
+        }
         allDates.insert(date);
         if (type == "出勤")
         {
@@ -338,7 +359,7 @@ void MainWindow::exportMonthlyReport()
         }
     }
     file.close();
-
+    }
     QFile outfile(outputPath);
     if (!outfile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
@@ -359,7 +380,6 @@ void MainWindow::exportMonthlyReport()
 
     QList<QDate> dates = allDates.values();
     std::sort(dates.begin(), dates.end());
-
     for(const QDate &date : std::as_const(dates))
     {
         QString youbi = QLocale(QLocale::Japanese).toString(date, "ddd");
@@ -370,15 +390,27 @@ void MainWindow::exportMonthlyReport()
         {
             QString start = startTimes[date].value(name);
             QString end = endTimes[date].value(name);
-            QString plan = plans[date].value(name);
+            QStringList planList = plans[date].value(name);
+            QString planText;
+            if (!planList.isEmpty())
+            {
+                if (planList.size() <= 2)
+                {
+                    planText = planList.join("、");
+                }
+                else
+                {
+                    planText = planList[0] + "、" + planList[1] + QString(" +%1").arg(planList.size() - 2);
+                }
+            }
             QString work;
             if (!start.isEmpty() && !end.isEmpty())
             {
-                work =start.left(5) + "-" + end.left(5);
+                work = start.left(5) + "-" + end.left(5);
             }
-            else if (!plan.isEmpty())
+            else if (!planText.isEmpty())
             {
-                work = plan;
+                work = planText;
             }
             else if (!start.isEmpty())
             {
@@ -410,14 +442,12 @@ void MainWindow::loadCsvToTable(const QString &name)
     {
         QString line = in.readLine();
         QStringList cols = line.split(",");
-
         if (cols.size() < 4) continue;
 
         QString date = cols[0].trimmed();
         QString time = cols[1].trimmed();
         QString person = cols[2].trimmed();
         QString type = cols[3].trimmed();
-
         if (normalize(person) != n) continue;
 
         QDate d = QDate::fromString(date, "yyyy/MM/dd");
@@ -430,10 +460,8 @@ void MainWindow::loadCsvToTable(const QString &name)
             if (month == d.month() && day == d.day())
             {
                 int targetCol = -1;
-
                 if (type == "出勤") targetCol = 3;
                 else if (type == "退勤") targetCol = 4;
-
                 if (targetCol >= 0)
                 {
                     QTableWidgetItem *item = ui->TimeCardTable->item(r, targetCol);
@@ -478,7 +506,6 @@ QString MainWindow::getTodayStatus(const QString &name)
         }
     }
     file.close();
-
     if (lastType == "退勤") return "退勤済み";
     if (lastType == "出勤") return "出勤済み";
     return "";
@@ -488,22 +515,10 @@ QString MainWindow::getTodayStatus(const QString &name)
 void MainWindow::initMonthTable(int year, int month)
 {
     ui->labelMonth->setText(QString("%1年%2月").arg(year) .arg(month));
-
-    for (auto b : nameButtons()){
-        QString name = b->text().trimmed();
-
-        if (getTodayStatus(name) == "出勤済み"){
-            b->setStyleSheet("background-color: lightblue");
-        }
-        else
-        {
-            b->setStyleSheet("");
-        }
-    }
-
     ui->TimeCardTable->clear();
     ui->TimeCardTable->setRowCount(0);
     ui->TimeCardTable->setColumnCount(6);
+    updateNameButtons();
 
     QStringList headers;
     headers << "月" << "日" << "曜日" << "出勤" << "退勤" << "予定";
@@ -524,6 +539,9 @@ void MainWindow::initMonthTable(int year, int month)
             item->setTextAlignment(Qt::AlignCenter);
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
 
+            //日付、曜日のみ色変更
+            if (col <= 2)
+            {
             //祝日
             if (isHoliday(date))
             {
@@ -537,8 +555,9 @@ void MainWindow::initMonthTable(int year, int month)
             else if (date.dayOfWeek() == 7){
                 item->setForeground(QBrush(Qt::red));
             }
+        }
             ui->TimeCardTable->setItem(row, col, item);
-        };
+    };
 
         set(0, QString::number(month));//月
         set(1, QString::number(d));//日
@@ -556,6 +575,8 @@ void MainWindow::initMonthTable(int year, int month)
     ui->TimeCardTable->setColumnWidth(5, 180);//予定
     //行番号を消す
     ui->TimeCardTable->verticalHeader()->setVisible(false);
+    //カーソル非表示
+    ui->TimeCardTable->clearSelection();
 }
 
 void MainWindow::checkMonthChange()
@@ -579,12 +600,11 @@ void MainWindow::savePlan(const QDate &from, const QDate &to, const QString &nam
 
     QTextStream out(&file);
     out.setEncoding(QStringConverter::System);
-
     for (QDate d = from; d <= to; d = d.addDays(1))
     {
         out << d.toString("yyyy/MM/dd") << ","
-        << name << ","
-        << plan << "\n";
+            << name << ","
+            << plan << "\n";
     }
     file.close();
 }
@@ -819,7 +839,7 @@ void MainWindow::deleteRecord(const QString &name, const QDate &date, const QStr
     }
 
     QTextStream out(&file);
-   out.setEncoding(QStringConverter::System);
+    out.setEncoding(QStringConverter::System);
     for (const QString &line : std::as_const(lines))
     {
         out << line << "\n";
@@ -862,9 +882,29 @@ void MainWindow::loadPlanToTable(const QString &name)
                 month == date.month() &&
                 day == date.day())
             {
-                QTableWidgetItem *item = new QTableWidgetItem(plan);
-                item->setTextAlignment(Qt::AlignCenter);
-                ui->TimeCardTable->setItem(r, 5, item);
+                QTableWidgetItem *item = ui->TimeCardTable->item(r, 5);
+                QStringList planList;
+                if (item && !item->text().isEmpty())
+                {
+                    planList = item->text().split("、");
+                }
+                planList.append(plan);
+                QString displayText;
+                if (planList.size() <= 2)
+                {
+                    displayText = planList.join("、");
+                }
+                else
+                {
+                    displayText = planList[0] + "、" + planList[1] + QString(" +%1").arg(planList.size() -2);
+                }
+                if (!item)
+                {
+                    item = new QTableWidgetItem;
+                    item->setTextAlignment(Qt::AlignCenter);
+                    ui->TimeCardTable->setItem(r, 5, item);
+                }
+                item->setText(displayText);
                 break;
             }
         }
@@ -894,9 +934,8 @@ bool MainWindow::hasTodayPlan(const QString &name)
         QString plan = normalize(cols[2]);
         if (date == today && person == targetName)
         {
-            if (plan == "有休" || plan == "代休" || plan.startsWith("出張"))
+            if (plan == "有休" || plan == "代休" || plan == "リモート" || plan.startsWith("出張"))
             {
-                file.close();
                 return true;
             }
         }
@@ -907,12 +946,6 @@ bool MainWindow::hasTodayPlan(const QString &name)
 
 void MainWindow::loadTodayPlans()
 {
-    //予定テーブルの基本設定
-    ui->TableTodayPlan->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    ui->TableTodayPlan->setFocusPolicy(Qt::NoFocus);
-    ui->TableTodayPlan->setSelectionMode(QAbstractItemView::NoSelection);
-    ui->TableTodayPlan->setColumnCount(2);
-    ui->TableTodayPlan->setHorizontalHeaderLabels(QStringList() << "名前" << "予定");
     ui->TableTodayPlan->setRowCount(0);
 
     QString today = QDate::currentDate().toString("yyyy/MM/dd");
@@ -931,13 +964,18 @@ void MainWindow::loadTodayPlans()
         ui->TableTodayPlan->setItem(row, 0, new QTableWidgetItem(cols[1]));
         ui->TableTodayPlan->setItem(row, 1, new QTableWidgetItem(cols[2]));
     }
-    file.close();
-    //列幅固定
-    ui->TableTodayPlan->setColumnWidth(0, 100);//名前
-    ui->TableTodayPlan->setColumnWidth(1, 180);//予定
-    //行番号を消す
+    //予定テーブルの基本設定
+    ui->TableTodayPlan->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->TableTodayPlan->setFocusPolicy(Qt::NoFocus);
+    ui->TableTodayPlan->setSelectionMode(QAbstractItemView::NoSelection);
+    ui->TableTodayPlan->setColumnCount(2);
+    //ヘッダ設定
+    ui->TableTodayPlan->setHorizontalHeaderLabels(QStringList() << "名前" << "予定");
+    ui->TableTodayPlan->setColumnWidth(0, 100);
+    ui->TableTodayPlan->setColumnWidth(1, 180);
+    //行番号削除
     ui->TableTodayPlan->verticalHeader()->setVisible(false);
     //カーソル非表示
     ui->TableTodayPlan->clearSelection();
+    file.close();
 }
-

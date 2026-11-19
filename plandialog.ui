@@ -76,7 +76,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>90</y>
+     <y>80</y>
      <width>49</width>
      <height>16</height>
     </rect>
@@ -89,7 +89,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>160</y>
+     <y>140</y>
      <width>49</width>
      <height>16</height>
     </rect>
@@ -102,7 +102,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>110</y>
+     <y>100</y>
      <width>121</width>
      <height>31</height>
     </rect>
@@ -135,7 +135,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>180</y>
+     <y>160</y>
      <width>75</width>
      <height>24</height>
     </rect>
@@ -148,7 +148,7 @@
    <property name="geometry">
     <rect>
      <x>100</x>
-     <y>180</y>
+     <y>160</y>
      <width>75</width>
      <height>24</height>
     </rect>
@@ -161,7 +161,7 @@
    <property name="geometry">
     <rect>
      <x>180</x>
-     <y>180</y>
+     <y>160</y>
      <width>75</width>
      <height>24</height>
     </rect>
@@ -173,8 +173,8 @@
   <widget class="QPushButton" name="btnOther">
    <property name="geometry">
     <rect>
-     <x>260</x>
-     <y>180</y>
+     <x>100</x>
+     <y>190</y>
      <width>75</width>
      <height>24</height>
     </rect>
@@ -207,6 +207,19 @@
    </property>
    <property name="text">
     <string>予定内容</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="btnRemote">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>190</y>
+     <width>75</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>リモート</string>
    </property>
   </widget>
  </widget>

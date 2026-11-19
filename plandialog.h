@@ -26,6 +26,7 @@ public:
 private slots:
     void on_btnPaid_clicked();
     void on_btnComp_clicked();
+    void on_btnRemote_clicked();
     void on_btnTrip_clicked();
     void on_btnOther_clicked();
     void on_buttonBox_acceptted();
